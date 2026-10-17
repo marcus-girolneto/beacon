@@ -6,8 +6,6 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/event"
 )
 
-// maxUALength bounds how much of a User-Agent the classifier inspects.
-// Legitimate UAs are well under this; longer ones are junk or abuse.
 const maxUALength = 512
 
 var (
@@ -25,12 +23,7 @@ var (
 	desktopTokens = [...]string{"windows nt", "macintosh", "mac os x", "x11", "linux", "cros"}
 )
 
-// ClassifyDevice derives a coarse device class from a User-Agent string.
-//
-// It is a deliberately small substring classifier rather than a full UA
-// database: marketing dashboards need desktop/mobile/tablet splits and bot
-// filtering, not exact browser versions. Known limitation: iPadOS 13+ in
-// desktop mode reports itself as Macintosh and is classified as desktop.
+// ClassifyDevice derives a coarse device class from a User-Agent.
 func ClassifyDevice(ua string) event.Device {
 	if ua == "" {
 		return event.DeviceUnknown
@@ -45,7 +38,7 @@ func ClassifyDevice(ua string) event.Device {
 		return event.DeviceBot
 	case containsAny(ua, tabletTokens[:]),
 		strings.Contains(ua, "android") && !strings.Contains(ua, "mobile"):
-		// Android tablets omit "Mobile" from the UA, per Google's guidance.
+		// android tablets omit "Mobile"
 		return event.DeviceTablet
 	case containsAny(ua, mobileTokens[:]):
 		return event.DeviceMobile

@@ -15,7 +15,6 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/pipeline"
 )
 
-// Rejection reasons reported to metrics.
 const (
 	reasonMalformed   = "malformed"
 	reasonInvalid     = "invalid"
@@ -24,14 +23,12 @@ const (
 	reasonInternal    = "internal"
 )
 
-// Endpoint labels reported to metrics.
 const (
 	endpointTrack = "track"
 	endpointBatch = "batch"
 	endpointPixel = "pixel"
 )
 
-// transparentGIF is the smallest valid 1x1 transparent GIF.
 var transparentGIF = []byte{
 	0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0xff, 0xff, 0xff, 0x21, 0xf9, 0x04, 0x01, 0x00, 0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00,
@@ -52,7 +49,6 @@ type batchRequest struct {
 	Batch []event.Event `json:"batch"`
 }
 
-// errorResponse is the body of every 4xx/5xx response.
 type errorResponse struct {
 	Error  string             `json:"error"`
 	Fields []event.FieldError `json:"fields,omitempty"`
@@ -79,10 +75,7 @@ func (s *Server) handleTrack(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, acceptedResponse{Accepted: 1})
 }
 
-// handleBatch accepts up to MaxBatchEvents events. Invalid events are
-// reported by index and skipped; the valid remainder is admitted as a unit,
-// so a client that gets a 503 can safely retry the whole request without
-// creating duplicates.
+// invalid events are skipped, the rest is admitted as a unit so a 503 is safe to retry.
 func (s *Server) handleBatch(w http.ResponseWriter, r *http.Request) {
 	var req batchRequest
 	if !s.decodeBody(w, r, s.cfg.MaxBatchBytes, &req) {
@@ -128,13 +121,7 @@ func (s *Server) handleBatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, acceptedResponse{Accepted: len(recs), Rejected: rejected})
 }
 
-// handlePixel records an event described by query parameters and always
-// answers with a 1x1 GIF, so a failed track never shows a broken image. The
-// status code still reflects the outcome for debugging.
-//
-// Parameters: t (type, default pageview), n (name), aid (anonymous id),
-// url (default: Referer header), ref, utm_source, utm_medium,
-// utm_campaign, utm_term, utm_content.
+// always answers with the GIF so a failed hit never renders as a broken image.
 func (s *Server) handlePixel(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	e := event.Event{
@@ -188,7 +175,6 @@ func (s *Server) requestMeta(r *http.Request) enrich.RequestMeta {
 	}
 }
 
-// enqueue admits recs and writes the error response if that fails.
 func (s *Server) enqueue(w http.ResponseWriter, r *http.Request, endpoint string, recs ...event.Record) bool {
 	err := s.queue.Enqueue(r.Context(), recs...)
 	if err == nil {
@@ -211,8 +197,6 @@ func (s *Server) enqueue(w http.ResponseWriter, r *http.Request, endpoint string
 	return false
 }
 
-// shedStatus maps an Enqueue error to a status code, sets Retry-After where
-// appropriate and records the drop.
 func (s *Server) shedStatus(w http.ResponseWriter, err error, n int) int {
 	switch {
 	case errors.Is(err, pipeline.ErrBufferFull):
@@ -223,7 +207,7 @@ func (s *Server) shedStatus(w http.ResponseWriter, err error, n int) int {
 		s.rec.EventsRejected(reasonTooLarge, n)
 		return http.StatusRequestEntityTooLarge
 	default:
-		// The client went away while waiting for buffer space.
+		// client went away while blocked
 		s.rec.EventsDropped("canceled", n)
 		return 499
 	}
@@ -231,8 +215,6 @@ func (s *Server) shedStatus(w http.ResponseWriter, err error, n int) int {
 	return http.StatusServiceUnavailable
 }
 
-// decodeBody strictly decodes a single JSON value from the request body into
-// dst and writes the error response if that fails.
 func (s *Server) decodeBody(w http.ResponseWriter, r *http.Request, limit int64, dst any) bool {
 	if !acceptableContentType(r.Header.Get("Content-Type")) {
 		s.rec.EventsRejected(reasonContentType, 1)
@@ -245,7 +227,7 @@ func (s *Server) decodeBody(w http.ResponseWriter, r *http.Request, limit int64,
 	dec.DisallowUnknownFields()
 	err := dec.Decode(dst)
 	if err == nil {
-		// Reject trailing data such as a second JSON value.
+		// reject trailing data
 		if _, terr := dec.Token(); !errors.Is(terr, io.EOF) {
 			err = errors.New("unexpected data after JSON value")
 		}
@@ -265,8 +247,7 @@ func (s *Server) decodeBody(w http.ResponseWriter, r *http.Request, limit int64,
 	return false
 }
 
-// acceptableContentType allows application/json and, for navigator.sendBeacon
-// which cannot set JSON without a CORS preflight, text/plain.
+// text/plain is for sendBeacon, which can't send JSON without a preflight.
 func acceptableContentType(ct string) bool {
 	if ct == "" {
 		return true

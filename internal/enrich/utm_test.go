@@ -79,7 +79,7 @@ func TestParseUTM(t *testing.T) {
 
 func TestTruncateKeepsRunesIntact(t *testing.T) {
 	t.Parallel()
-	s := strings.Repeat("é", 10) // 2 bytes per rune
+	s := strings.Repeat("é", 10)
 	got := truncate(s, 5)
 	if got != "éé" {
 		t.Errorf("truncate() = %q, want %q", got, "éé")
@@ -156,7 +156,6 @@ func FuzzParseUTM(f *testing.F) {
 		if !strings.Contains(raw, "utm_") && !got.IsZero() {
 			t.Fatalf("ParseUTM(%q) = %+v, want zero for input without utm_", raw, got)
 		}
-		// Parsed values must always pass the event validator's UTM rules.
 		v := event.NewValidator(nil)
 		e := event.Event{Type: event.TypePageview, AnonymousID: "a", URL: "https://x.io/", UTM: got}
 		if err := v.Validate(&e); err != nil {

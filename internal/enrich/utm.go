@@ -1,7 +1,4 @@
-// Package enrich turns validated client events into privacy-safe records:
-// it extracts UTM parameters, attributes each event to an acquisition
-// channel, derives a coarse device class and replaces client identifiers
-// with a daily-rotating, non-reversible visitor hash.
+// Package enrich turns validated events into privacy-safe records.
 package enrich
 
 import (
@@ -13,11 +10,7 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/event"
 )
 
-// ParseUTM extracts utm_* query parameters from rawURL. It never fails:
-// malformed URLs or query strings yield whatever could be parsed, which may
-// be nothing. Source and medium are lower-cased so that "Google" and
-// "google" aggregate together; every value is trimmed, stripped of control
-// characters and truncated to event.MaxUTMLength bytes.
+// ParseUTM extracts normalized utm_* parameters from rawURL. It never fails.
 func ParseUTM(rawURL string) event.UTM {
 	_, query, ok := strings.Cut(rawURL, "?")
 	if !ok || !strings.Contains(query, "utm_") {
@@ -25,8 +18,7 @@ func ParseUTM(rawURL string) event.UTM {
 	}
 	query, _, _ = strings.Cut(query, "#")
 
-	// ParseQuery returns every pair it managed to decode alongside the first
-	// error, and partial attribution beats none.
+	// partial results beat none
 	values, _ := url.ParseQuery(query)
 	return event.UTM{
 		Source:   clean(values.Get("utm_source"), true),
@@ -37,8 +29,7 @@ func ParseUTM(rawURL string) event.UTM {
 	}
 }
 
-// NormalizeUTM applies the same normalization as ParseUTM to values that a
-// client supplied explicitly.
+// NormalizeUTM normalizes client-supplied values like ParseUTM does.
 func NormalizeUTM(u event.UTM) event.UTM {
 	return event.UTM{
 		Source:   clean(u.Source, true),
@@ -63,14 +54,12 @@ func clean(s string, lower bool) string {
 		}, s)
 	}
 	if lower {
-		// Lower-casing can change a string's byte length, so it must
-		// happen before truncation.
+		// before truncate, lowering can change byte length
 		s = strings.ToLower(s)
 	}
 	return strings.TrimSpace(truncate(strings.TrimSpace(s), event.MaxUTMLength))
 }
 
-// truncate shortens s to at most n bytes without splitting a rune.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -81,13 +70,9 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
-// paidClickIDs are query parameters appended by ad platforms to landing page
-// URLs. Their presence identifies paid traffic even when UTM tags are missing.
-// fbclid is deliberately absent: Facebook appends it to organic outbound
-// links too, so it does not imply a paid click.
+// no fbclid, facebook adds it to organic links too.
 var paidClickIDs = [...]string{"gclid=", "gbraid=", "wbraid=", "msclkid=", "ttclid=", "li_fat_id=", "twclid="}
 
-// hasPaidClickID reports whether rawURL carries an ad-platform click ID.
 func hasPaidClickID(rawURL string) bool {
 	_, query, ok := strings.Cut(rawURL, "?")
 	if !ok {

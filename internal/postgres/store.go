@@ -1,5 +1,4 @@
-// Package postgres stores records in PostgreSQL using the COPY protocol and
-// serves aggregate stats queries over them.
+// Package postgres stores records in PostgreSQL and serves stats queries.
 package postgres
 
 import (
@@ -17,8 +16,7 @@ import (
 //go:embed schema.sql
 var schema string
 
-// migrationLockID is an arbitrary constant used as an advisory lock key so
-// that replicas starting together do not race on DDL.
+// advisory lock key so replicas don't race on DDL
 const migrationLockID = 0x6265_6163_6f6e // "beacon"
 
 var columns = []string{
@@ -49,7 +47,7 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	return &Store{pool: pool}, nil
 }
 
-// Close releases every pooled connection.
+// Close closes the pool.
 func (s *Store) Close() { s.pool.Close() }
 
 // Ping reports whether the database is reachable.
@@ -57,8 +55,7 @@ func (s *Store) Ping(ctx context.Context) error {
 	return s.pool.Ping(ctx)
 }
 
-// Migrate creates the schema if it does not exist. It is idempotent and safe
-// to run from several processes at once.
+// Migrate creates the schema. Safe to run concurrently from several processes.
 func (s *Store) Migrate(ctx context.Context) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -78,8 +75,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	return nil
 }
 
-// Write bulk-loads recs with COPY FROM STDIN in a single round trip. COPY
-// is atomic: either the whole batch is stored or none of it is.
+// Write stores recs with a single, atomic COPY.
 func (s *Store) Write(ctx context.Context, recs []event.Record) error {
 	if len(recs) == 0 {
 		return nil
@@ -105,8 +101,7 @@ func (s *Store) Write(ctx context.Context, recs []event.Record) error {
 	return nil
 }
 
-// dimensionExpr maps each dimension to a trusted SQL expression. Only these
-// constants are ever interpolated into queries.
+// only these constants are ever interpolated into SQL
 func dimensionExpr(d stats.Dimension) (string, error) {
 	switch d {
 	case stats.ByCampaign:
@@ -127,12 +122,6 @@ func dimensionExpr(d stats.Dimension) (string, error) {
 }
 
 // Stats aggregates events matching q.
-//
-// Distinct visitors are counted with two-level hash aggregation (group by
-// key and visitor, then count rows per key) instead of count(DISTINCT ...),
-// which forces Postgres into a single-threaded sort. On 11M rows this is
-// about five times faster. Totals need their own pass because one visitor
-// can appear under several keys; the totals row sorts last via is_total.
 func (s *Store) Stats(ctx context.Context, q stats.Query) (stats.Result, error) {
 	if err := q.Validate(); err != nil {
 		return stats.Result{}, err

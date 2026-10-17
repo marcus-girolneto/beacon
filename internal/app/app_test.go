@@ -17,7 +17,6 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/config"
 )
 
-// syncBuffer is a bytes.Buffer safe for concurrent use.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -37,7 +36,6 @@ func (b *syncBuffer) String() string {
 
 func testConfig(t *testing.T, args ...string) config.Config {
 	t.Helper()
-	// A long flush interval proves that shutdown, not the timer, flushes.
 	cfg, err := config.Parse(append([]string{"-flush-interval", "1h"}, args...), func(string) string { return "" }, io.Discard)
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +168,7 @@ func TestRunServeError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = ln.Close() // Serve fails immediately on a closed listener
+	_ = ln.Close()
 	if err := Run(t.Context(), testConfig(t), ln, io.Discard, slog.New(slog.DiscardHandler)); err == nil {
 		t.Error("Run() with closed listener succeeded")
 	}

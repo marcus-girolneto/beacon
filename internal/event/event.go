@@ -1,6 +1,4 @@
-// Package event defines the analytics event model accepted at the edge, the
-// enriched record that flows through the pipeline, and the validation rules
-// applied to incoming events.
+// Package event defines incoming events, enriched records and validation.
 package event
 
 import (
@@ -8,17 +6,17 @@ import (
 	"time"
 )
 
-// Type is the kind of an analytics event.
+// Type is an event kind.
 type Type string
 
-// Supported event types.
+// Event types.
 const (
 	TypePageview Type = "pageview"
 	TypeClick    Type = "click"
 	TypeCustom   Type = "custom"
 )
 
-// Valid reports whether t is one of the supported event types.
+// Valid reports whether t is a known type.
 func (t Type) Valid() bool {
 	switch t {
 	case TypePageview, TypeClick, TypeCustom:
@@ -28,7 +26,7 @@ func (t Type) Valid() bool {
 	}
 }
 
-// UTM holds the standard campaign tracking parameters.
+// UTM holds campaign parameters.
 type UTM struct {
 	Source   string `json:"source,omitempty"`
 	Medium   string `json:"medium,omitempty"`
@@ -42,8 +40,7 @@ func (u UTM) IsZero() bool {
 	return u == UTM{}
 }
 
-// Merge returns u with every empty field filled from fallback. Values set
-// explicitly by the client therefore win over values parsed from the URL.
+// Merge fills empty fields of u from fallback.
 func (u UTM) Merge(fallback UTM) UTM {
 	if u.Source == "" {
 		u.Source = fallback.Source
@@ -63,10 +60,8 @@ func (u UTM) Merge(fallback UTM) UTM {
 	return u
 }
 
-// Event is a single analytics event as submitted by a client.
+// Event is an event as submitted by a client.
 type Event struct {
-	// MessageID is an optional client-supplied idempotency key. The server
-	// generates one when it is absent.
 	MessageID   string          `json:"message_id,omitempty"`
 	Type        Type            `json:"type"`
 	Name        string          `json:"name,omitempty"`
@@ -75,15 +70,13 @@ type Event struct {
 	Referrer    string          `json:"referrer,omitempty"`
 	UTM         UTM             `json:"utm,omitzero"`
 	Properties  json.RawMessage `json:"properties,omitempty"`
-	// Timestamp is when the event happened on the client. The server uses
-	// the receive time when it is absent.
-	Timestamp time.Time `json:"timestamp,omitzero"`
+	Timestamp   time.Time       `json:"timestamp,omitzero"`
 }
 
-// Channel is the marketing acquisition channel an event is attributed to.
+// Channel is an acquisition channel.
 type Channel string
 
-// Supported acquisition channels.
+// Channels.
 const (
 	ChannelDirect   Channel = "direct"
 	ChannelSearch   Channel = "search"
@@ -93,10 +86,10 @@ const (
 	ChannelReferral Channel = "referral"
 )
 
-// Device is a coarse device class derived from the User-Agent header.
+// Device is a coarse device class.
 type Device string
 
-// Supported device classes.
+// Device classes.
 const (
 	DeviceDesktop Device = "desktop"
 	DeviceMobile  Device = "mobile"
@@ -105,8 +98,7 @@ const (
 	DeviceUnknown Device = "unknown"
 )
 
-// Record is an enriched, privacy-safe event ready to be written to a sink.
-// It never contains the client IP address or the raw User-Agent.
+// Record is an enriched event. It never holds the IP or raw User-Agent.
 type Record struct {
 	MessageID    string          `json:"message_id"`
 	Type         Type            `json:"type"`

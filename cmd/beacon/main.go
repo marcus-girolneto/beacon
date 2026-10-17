@@ -16,7 +16,7 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/config"
 )
 
-// version is set at build time with -ldflags "-X main.version=...".
+// set via -ldflags "-X main.version=..."
 var version = "dev"
 
 func main() {
@@ -39,7 +39,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 		return 0
 	}
 
-	// Logs go to stderr so they never mix with NDJSON on stdout.
+	// stderr, stdout may carry NDJSON
 	opts := &slog.HandlerOptions{Level: cfg.LogLevel}
 	var handler slog.Handler = slog.NewJSONHandler(stderr, opts)
 	if cfg.LogFormat == "text" {

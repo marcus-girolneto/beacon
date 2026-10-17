@@ -1,13 +1,4 @@
-// Package pipeline buffers enriched records in memory and delivers them to a
-// Sink in batches.
-//
-// Producers (HTTP handlers) call Enqueue, which admits records into a bounded
-// queue. A fixed pool of batcher goroutines drains the queue and flushes a
-// batch when it reaches BatchSize or when FlushInterval elapses, whichever
-// comes first. When the queue is full the pipeline either rejects new records
-// immediately (OverflowReject) or makes producers wait up to BlockTimeout
-// (OverflowBlock). Shutdown stops admission, drains the queue and flushes
-// every remaining record before returning.
+// Package pipeline buffers records in memory and writes them to a Sink in batches.
 package pipeline
 
 import (
@@ -25,34 +16,24 @@ import (
 
 // Errors returned by Enqueue.
 var (
-	// ErrBufferFull means the queue had no room for the records. Callers
-	// should shed load, e.g. respond 503 with Retry-After.
 	ErrBufferFull = errors.New("pipeline buffer full")
-	// ErrClosed means the pipeline is shutting down and no longer admits
-	// records.
-	ErrClosed = errors.New("pipeline closed")
-	// ErrTooLarge means a single Enqueue call carried more records than the
-	// buffer can ever hold.
-	ErrTooLarge = errors.New("more records than buffer capacity")
+	ErrClosed     = errors.New("pipeline closed")
+	ErrTooLarge   = errors.New("more records than buffer capacity")
 )
 
-// Sink persists batches of records. Write must not retain recs after it
-// returns; the pipeline reuses the slice for the next batch.
+// Sink persists batches of records.
+// Write must not retain recs after it returns: the slice is reused.
 type Sink interface {
 	Write(ctx context.Context, recs []event.Record) error
 }
 
-// Observer receives pipeline telemetry. Implementations must be safe for
-// concurrent use.
+// Observer receives pipeline telemetry. It must be safe for concurrent use.
 type Observer interface {
-	// ObserveFlush is called after every attempt to deliver a batch.
 	ObserveFlush(trigger Trigger, size int, elapsed time.Duration, err error)
-	// ObserveLost is called with the number of records discarded after a
-	// batch exhausted its retries.
 	ObserveLost(n int)
 }
 
-// Trigger names the reason a batch was flushed.
+// Trigger is why a batch was flushed.
 type Trigger string
 
 // Flush triggers.
@@ -62,20 +43,16 @@ const (
 	TriggerShutdown Trigger = "shutdown"
 )
 
-// OverflowMode selects what Enqueue does when the buffer is full.
+// OverflowMode is what Enqueue does when the buffer is full.
 type OverflowMode string
 
 // Overflow modes.
 const (
-	// OverflowReject fails fast with ErrBufferFull. It keeps request latency
-	// flat and pushes the retry decision to the client.
 	OverflowReject OverflowMode = "reject"
-	// OverflowBlock waits up to Config.BlockTimeout for room. It absorbs short
-	// bursts at the cost of holding connections open.
-	OverflowBlock OverflowMode = "block"
+	OverflowBlock  OverflowMode = "block"
 )
 
-// ParseOverflowMode converts s into an OverflowMode.
+// ParseOverflowMode parses s.
 func ParseOverflowMode(s string) (OverflowMode, error) {
 	switch m := OverflowMode(s); m {
 	case OverflowReject, OverflowBlock:
@@ -85,7 +62,7 @@ func ParseOverflowMode(s string) (OverflowMode, error) {
 	}
 }
 
-// Ticker abstracts time.Ticker so tests can drive interval flushes.
+// Ticker abstracts time.Ticker for tests.
 type Ticker interface {
 	C() <-chan time.Time
 	Stop()
@@ -95,32 +72,17 @@ type realTicker struct{ *time.Ticker }
 
 func (t realTicker) C() <-chan time.Time { return t.Ticker.C }
 
-// Config tunes the pipeline. Zero fields take the defaults listed below.
+// Config tunes the pipeline. Zero fields get defaults (see withDefaults).
 type Config struct {
-	// BufferSize is the maximum number of records queued between producers
-	// and batchers. Default 10000.
-	BufferSize int
-	// BatchSize is the number of records that triggers a flush. Default 500.
-	BatchSize int
-	// FlushInterval bounds how long a record waits in a partial batch.
-	// Default 1s.
+	BufferSize    int
+	BatchSize     int
 	FlushInterval time.Duration
-	// Workers is the number of batcher goroutines. Default 2.
-	Workers int
-	// Overflow selects reject or block behavior on a full buffer. Default
-	// OverflowReject.
-	Overflow OverflowMode
-	// BlockTimeout bounds how long Enqueue waits in OverflowBlock mode.
-	// Default 100ms.
-	BlockTimeout time.Duration
-	// WriteTimeout bounds each Sink.Write call. Default 10s.
-	WriteTimeout time.Duration
-	// MaxRetries is the number of extra attempts after a failed write.
-	// Default 2. Negative disables retries.
-	MaxRetries int
-	// RetryBackoff is the delay before the first retry; it doubles on each
-	// further attempt. Default 100ms.
-	RetryBackoff time.Duration
+	Workers       int
+	Overflow      OverflowMode
+	BlockTimeout  time.Duration
+	WriteTimeout  time.Duration
+	MaxRetries    int // negative disables retries
+	RetryBackoff  time.Duration
 }
 
 func (c Config) withDefaults() Config {
@@ -147,7 +109,7 @@ func setDefault[T comparable](v *T, def T) {
 // Option customizes a Pipeline.
 type Option func(*Pipeline)
 
-// WithLogger sets the logger. The default discards output.
+// WithLogger sets the logger.
 func WithLogger(l *slog.Logger) Option {
 	return func(p *Pipeline) { p.log = l }
 }
@@ -157,12 +119,12 @@ func WithObserver(o Observer) Option {
 	return func(p *Pipeline) { p.obs = o }
 }
 
-// WithTicker replaces the interval ticker factory, for tests.
+// WithTicker sets the ticker factory, for tests.
 func WithTicker(newTicker func(time.Duration) Ticker) Option {
 	return func(p *Pipeline) { p.newTicker = newTicker }
 }
 
-// WithSleep replaces the function used to wait between retries, for tests.
+// WithSleep sets the retry sleep func, for tests.
 func WithSleep(sleep func(context.Context, time.Duration) error) Option {
 	return func(p *Pipeline) { p.sleep = sleep }
 }
@@ -176,14 +138,10 @@ type Pipeline struct {
 	newTicker func(time.Duration) Ticker
 	sleep     func(context.Context, time.Duration) error
 
-	// slots counts free queue capacity. Acquiring before sending guarantees
-	// the channel send never blocks, and lets a multi-record Enqueue be
-	// admitted all-or-nothing.
+	// acquired before sending, so sends never block and Enqueue is all-or-nothing
 	slots *semaphore.Weighted
 	queue chan event.Record
 
-	// mu guards closed and the queue against a send after close. Producers
-	// hold the read lock for the duration of an Enqueue.
 	mu      sync.RWMutex
 	closed  bool
 	closing context.Context
@@ -193,8 +151,7 @@ type Pipeline struct {
 	wg        sync.WaitGroup
 }
 
-// New returns a pipeline that delivers to sink. Call Start to launch the
-// batchers and Shutdown to drain them.
+// New returns a pipeline that writes to sink.
 func New(sink Sink, cfg Config, opts ...Option) *Pipeline {
 	cfg = cfg.withDefaults()
 	closing, abort := context.WithCancel(context.Background())
@@ -218,13 +175,13 @@ func New(sink Sink, cfg Config, opts ...Option) *Pipeline {
 	return p
 }
 
-// Config returns the effective configuration, with defaults applied.
+// Config returns the effective config.
 func (p *Pipeline) Config() Config { return p.cfg }
 
-// Buffered returns the number of records waiting in the queue.
+// Buffered returns the number of queued records.
 func (p *Pipeline) Buffered() int { return len(p.queue) }
 
-// Start launches the batcher goroutines. It is safe to call more than once.
+// Start launches the batchers. Safe to call more than once.
 func (p *Pipeline) Start() {
 	p.startOnce.Do(func() {
 		for i := range p.cfg.Workers {
@@ -233,11 +190,8 @@ func (p *Pipeline) Start() {
 	})
 }
 
-// Enqueue admits recs into the buffer as a unit: either every record is
-// queued or none is. It returns ErrBufferFull when there is no room (after
-// waiting up to BlockTimeout in OverflowBlock mode), ErrClosed after
-// Shutdown has begun, ErrTooLarge if recs can never fit, or the context
-// error if ctx ends first.
+// Enqueue queues all of recs or none of them.
+// It returns ErrBufferFull, ErrClosed, ErrTooLarge or a context error.
 func (p *Pipeline) Enqueue(ctx context.Context, recs ...event.Record) error {
 	n := int64(len(recs))
 	if n == 0 {
@@ -271,7 +225,7 @@ func (p *Pipeline) reserve(ctx context.Context, n int64) error {
 
 	waitCtx, cancel := context.WithTimeout(ctx, p.cfg.BlockTimeout)
 	defer cancel()
-	// Shutdown must not wait for producers parked on a full buffer.
+	// don't let blocked producers hold up shutdown
 	stop := context.AfterFunc(p.closing, cancel)
 	defer stop()
 
@@ -288,10 +242,8 @@ func (p *Pipeline) reserve(ctx context.Context, n int64) error {
 	}
 }
 
-// Shutdown stops admitting records, waits for the batchers to flush every
-// buffered record and returns. If ctx ends first it returns the context
-// error; batchers keep draining in the background but the caller should
-// assume buffered records may be lost.
+// Shutdown stops admission and waits for buffered records to be flushed.
+// If ctx ends first, batchers keep draining in the background.
 func (p *Pipeline) Shutdown(ctx context.Context) error {
 	p.abort()
 	p.mu.Lock()
@@ -300,7 +252,7 @@ func (p *Pipeline) Shutdown(ctx context.Context) error {
 		close(p.queue)
 	}
 	p.mu.Unlock()
-	p.Start() // ensure someone drains even if Start was never called
+	p.Start()
 
 	done := make(chan struct{})
 	go func() {
@@ -325,7 +277,7 @@ func (p *Pipeline) runBatcher(id int) {
 			return
 		}
 		p.deliver(id, trigger, batch)
-		clear(batch) // drop references so flushed records can be collected
+		clear(batch)
 		batch = batch[:0]
 	}
 
@@ -347,9 +299,7 @@ func (p *Pipeline) runBatcher(id int) {
 	}
 }
 
-// deliver writes batch to the sink, retrying with exponential backoff. The
-// write context is detached from shutdown so that a draining pipeline can
-// still flush; each attempt is bounded by WriteTimeout instead.
+// deliver uses a background context so a draining pipeline can still flush.
 func (p *Pipeline) deliver(worker int, trigger Trigger, batch []event.Record) {
 	backoff := p.cfg.RetryBackoff
 	var err error

@@ -83,7 +83,7 @@ type fakeStats struct {
 	got   stats.Query
 	res   stats.Result
 	err   error
-	block bool // wait for the context to end, like a slow query
+	block bool
 }
 
 func (f *fakeStats) Stats(ctx context.Context, q stats.Query) (stats.Result, error) {
@@ -559,8 +559,6 @@ func TestClientIP(t *testing.T) {
 	}
 }
 
-// TestEndToEndWithPipeline exercises the real pipeline behind the handler
-// over a real HTTP connection.
 func TestEndToEndWithPipeline(t *testing.T) {
 	t.Parallel()
 	sink := &collectSink{}

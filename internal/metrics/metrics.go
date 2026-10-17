@@ -15,9 +15,7 @@ import (
 
 const namespace = "beacon"
 
-// Metrics holds every collector and the registry they are registered with.
-// A dedicated registry (rather than the global default) keeps tests isolated
-// and lets several instances coexist in one process.
+// Metrics holds the collectors and their registry.
 type Metrics struct {
 	reg *prometheus.Registry
 
@@ -32,8 +30,7 @@ type Metrics struct {
 	requestDuration *prometheus.HistogramVec
 }
 
-// New creates and registers the collectors. buffered reports the current
-// number of queued records and capacity the queue size.
+// New creates and registers the collectors.
 func New(buffered func() int, capacity int) *Metrics {
 	m := &Metrics{
 		reg: prometheus.NewRegistry(),
@@ -95,7 +92,7 @@ func New(buffered func() int, capacity int) *Metrics {
 	return m
 }
 
-// Handler serves the metrics in the Prometheus exposition format.
+// Handler serves the metrics.
 func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.reg, promhttp.HandlerOpts{Registry: m.reg})
 }

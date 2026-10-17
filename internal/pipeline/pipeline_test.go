@@ -13,9 +13,6 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/event"
 )
 
-// fakeSink records every successful batch. If gate is non-nil each Write
-// announces itself on entered and then waits for a value on gate. The first
-// failures writes return errFake.
 type fakeSink struct {
 	batches  chan []event.Record
 	entered  chan struct{}
@@ -24,7 +21,6 @@ type fakeSink struct {
 	openOnce sync.Once
 }
 
-// open permanently unblocks every current and future Write.
 func (s *fakeSink) open() {
 	s.openOnce.Do(func() { close(s.gate) })
 }
@@ -71,8 +67,6 @@ func (s *fakeSink) assertNoBatch(t *testing.T) {
 	}
 }
 
-// manualTicker is a Ticker whose ticks are sent by the test. The channel is
-// unbuffered, so a send completes only once a batcher has received the tick.
 type manualTicker struct{ ch chan time.Time }
 
 func (m *manualTicker) C() <-chan time.Time { return m.ch }
@@ -127,7 +121,7 @@ func newHarness(t *testing.T, cfg Config, sink *fakeSink) *harness {
 		obs:    &recordingObserver{},
 	}
 	if cfg.FlushInterval == 0 {
-		cfg.FlushInterval = time.Hour // ticks only come from the test
+		cfg.FlushInterval = time.Hour
 	}
 	h.p = New(sink, cfg,
 		WithTicker(func(time.Duration) Ticker { return h.ticker }),
@@ -144,7 +138,6 @@ func newHarness(t *testing.T, cfg Config, sink *fakeSink) *harness {
 	return h
 }
 
-// waitDrained spins until the batchers have pulled everything off the queue.
 func (h *harness) waitDrained(t *testing.T) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -181,7 +174,7 @@ func TestFlushOnInterval(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, Config{BatchSize: 100, Workers: 1}, newFakeSink())
 
-	h.ticker.tick() // empty batch: nothing to flush
+	h.ticker.tick()
 	h.sink.assertNoBatch(t)
 
 	if err := h.p.Enqueue(t.Context(), records(2)...); err != nil {
@@ -278,8 +271,6 @@ func TestShutdownTimeout(t *testing.T) {
 	}
 }
 
-// blockedHarness returns a pipeline whose only batcher is stuck inside
-// Sink.Write, so the queue fills deterministically.
 func blockedHarness(t *testing.T, mode OverflowMode) *harness {
 	t.Helper()
 	sink := newFakeSink()
@@ -290,7 +281,7 @@ func blockedHarness(t *testing.T, mode OverflowMode) *harness {
 	if err := h.p.Enqueue(t.Context(), records(1)...); err != nil {
 		t.Fatal(err)
 	}
-	<-sink.entered // the batcher holds record 1 and is blocked in Write
+	<-sink.entered
 	if err := h.p.Enqueue(t.Context(), records(4)...); err != nil {
 		t.Fatalf("filling buffer: %v", err)
 	}
@@ -308,8 +299,8 @@ func TestBackpressureReject(t *testing.T) {
 		t.Fatalf("Buffered() = %d, want 4", got)
 	}
 
-	h.sink.gate <- struct{}{} // finish write of record 1
-	<-h.sink.entered          // batcher dequeued record 2 and blocks again
+	h.sink.gate <- struct{}{}
+	<-h.sink.entered
 	if err := h.p.Enqueue(t.Context(), records(1)...); err != nil {
 		t.Fatalf("Enqueue after room freed = %v, want nil", err)
 	}
@@ -322,7 +313,7 @@ func TestBackpressureRejectIsAllOrNothing(t *testing.T) {
 	t.Parallel()
 	h := blockedHarness(t, OverflowReject)
 	h.sink.gate <- struct{}{}
-	<-h.sink.entered // one slot free
+	<-h.sink.entered
 
 	if err := h.p.Enqueue(t.Context(), records(2)...); !errors.Is(err, ErrBufferFull) {
 		t.Fatalf("Enqueue(2) with 1 free slot = %v, want ErrBufferFull", err)

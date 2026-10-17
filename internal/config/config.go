@@ -1,5 +1,4 @@
-// Package config parses beacon's command-line flags, with every flag also
-// settable through a BEACON_* environment variable.
+// Package config parses flags and BEACON_* environment variables.
 package config
 
 import (
@@ -21,7 +20,7 @@ const (
 	SinkPostgres = "postgres"
 )
 
-// Config is the complete runtime configuration.
+// Config is the runtime configuration.
 type Config struct {
 	Addr            string
 	Sink            string
@@ -40,13 +39,11 @@ type Config struct {
 	ShowVersion     bool
 }
 
-// ErrHelp is returned when -h or -help was requested.
+// ErrHelp is returned for -h or -help.
 var ErrHelp = flag.ErrHelp
 
-// Parse builds a Config from args (without the program name) and the
-// environment accessor getenv. Flags take precedence over environment
-// variables, which take precedence over defaults. Usage and errors are
-// written to output.
+// Parse builds a Config from args (without the program name) and getenv.
+// Flags win over environment variables, which win over defaults.
 func Parse(args []string, getenv func(string) string, output io.Writer) (Config, error) {
 	var (
 		c        Config
@@ -147,7 +144,7 @@ func (c Config) validate() error {
 		}
 	}
 	if c.MaxBatchEvents > c.Pipeline.BufferSize {
-		// A batch is admitted all-or-nothing, so it must fit in the buffer.
+		// batches are admitted all-or-nothing
 		errs = append(errs, errors.New("-max-batch-events must not exceed -buffer-size"))
 	}
 	if c.ProxyHops < 0 {
@@ -156,8 +153,7 @@ func (c Config) validate() error {
 	return errors.Join(errs...)
 }
 
-// EnvName returns the environment variable that sets flag name, e.g.
-// "flush-interval" becomes "BEACON_FLUSH_INTERVAL".
+// EnvName maps "flush-interval" to "BEACON_FLUSH_INTERVAL".
 func EnvName(flagName string) string {
 	return "BEACON_" + strings.ToUpper(strings.ReplaceAll(flagName, "-", "_"))
 }

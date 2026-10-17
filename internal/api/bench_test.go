@@ -17,8 +17,6 @@ type discardSink struct{}
 
 func (discardSink) Write(context.Context, []event.Record) error { return nil }
 
-// benchServer wires the handler to a real pipeline with a no-op sink, so the
-// benchmark covers decode, validation, enrichment and buffer admission.
 func benchServer(b *testing.B) http.Handler {
 	b.Helper()
 	p := pipeline.New(discardSink{}, pipeline.Config{

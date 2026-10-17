@@ -163,7 +163,6 @@ func TestFileErrors(t *testing.T) {
 	}
 }
 
-// flakyWriter fails its first Write and succeeds afterwards.
 type flakyWriter struct {
 	failed bool
 	bytes.Buffer

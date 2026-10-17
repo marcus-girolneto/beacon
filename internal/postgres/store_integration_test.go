@@ -58,8 +58,6 @@ var dbCounter struct {
 	n int
 }
 
-// newStore returns a migrated Store backed by a fresh database, so tests can
-// run in parallel without seeing each other's rows.
 func newStore(t *testing.T) *postgres.Store {
 	t.Helper()
 	ctx := t.Context()
@@ -126,7 +124,7 @@ func TestWriteAndStats(t *testing.T) {
 		rec("2", func(r *event.Record) {
 			r.Channel = event.ChannelPaid
 			r.UTM = event.UTM{Source: "google", Medium: "cpc", Campaign: "spring"}
-			r.VisitorHash = "v-1" // same visitor as record 1
+			r.VisitorHash = "v-1"
 			r.Type = event.TypeClick
 		}),
 		rec("3", func(r *event.Record) {
@@ -313,7 +311,6 @@ func TestOpenErrors(t *testing.T) {
 	}
 }
 
-// closedPortDSN points at a port nothing listens on.
 func closedPortDSN() string {
 	u := url.URL{Scheme: "postgres", User: url.UserPassword("beacon", "beacon"), Host: "127.0.0.1:1", Path: "/beacon"}
 	return u.String() + "?sslmode=disable&connect_timeout=1"

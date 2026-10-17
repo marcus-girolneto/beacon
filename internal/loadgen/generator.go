@@ -1,5 +1,4 @@
-// Package loadgen produces realistic synthetic analytics traffic and drives
-// it against a beacon instance, reporting throughput and latency.
+// Package loadgen generates synthetic traffic and drives it against beacon.
 package loadgen
 
 import (
@@ -10,7 +9,6 @@ import (
 	"time"
 )
 
-// weighted picks items with probability proportional to their weight.
 type weighted[T any] struct {
 	items   []T
 	cumul   []int
@@ -35,7 +33,6 @@ func (w weighted[T]) pick(r *rand.Rand) T {
 	return w.at(r.IntN(w.totalWt))
 }
 
-// at returns the item whose cumulative weight range contains n mod total.
 func (w weighted[T]) at(n int) T {
 	n %= w.totalWt
 	for i, c := range w.cumul {
@@ -56,15 +53,12 @@ func p[T any](v T, w int) struct {
 	}{v, w}
 }
 
-// source describes how a simulated visitor arrived.
 type source struct {
 	referrer string
-	query    string // appended to the landing URL
+	query    string
 }
 
-// Generator creates plausible marketing traffic: a long tail of pages,
-// search/social/email/paid/direct acquisition mixes, a device split close
-// to typical web traffic and a pool of returning visitors.
+// Generator creates plausible marketing traffic.
 type Generator struct {
 	rng      *rand.Rand
 	host     string
@@ -77,8 +71,7 @@ type Generator struct {
 	signups  []string
 }
 
-// NewGenerator returns a Generator for site host with a pool of visitors
-// distinct visitors. The same seed always yields the same sequence.
+// NewGenerator returns a deterministic Generator for seed.
 func NewGenerator(seed uint64, host string, visitors int) *Generator {
 	return &Generator{
 		rng:      rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15)), //nolint:gosec // synthetic traffic, not security
@@ -118,7 +111,7 @@ func NewGenerator(seed uint64, host string, visitors int) *Generator {
 	}
 }
 
-// Event is the JSON payload the generator produces.
+// Event is the generated JSON payload.
 type Event struct {
 	Type        string          `json:"type"`
 	Name        string          `json:"name,omitempty"`
@@ -129,14 +122,14 @@ type Event struct {
 	Timestamp   time.Time       `json:"timestamp"`
 }
 
-// Visit is one synthetic event plus the client attributes to send with it.
+// Visit is an event plus the client attributes to send with it.
 type Visit struct {
 	Event     Event
 	UserAgent string
 	IP        string
 }
 
-// Next returns a new synthetic visit at time now.
+// Next returns a visit at time now.
 func (g *Generator) Next(now time.Time) Visit {
 	visitor := g.rng.IntN(g.visitors)
 	src := g.sources.pick(g.rng)
@@ -160,10 +153,9 @@ func (g *Generator) Next(now time.Time) Visit {
 
 	return Visit{
 		Event: e,
-		// Each visitor keeps one device, as real visitors mostly do, so
-		// visitor hashes (IP + User-Agent) stay stable across events.
+		// one device per visitor keeps hashes stable
 		UserAgent: g.agents.at(visitor * 2654435761),
-		// Addresses from 198.18.0.0/15, reserved for benchmarking (RFC 2544).
+		// 198.18.0.0/15, RFC 2544 benchmarking range
 		IP: fmt.Sprintf("198.%d.%d.%d", 18+visitor>>16&1, visitor>>8&0xff, visitor&0xff),
 	}
 }

@@ -28,9 +28,6 @@ func TestGeneratorIsDeterministic(t *testing.T) {
 	}
 }
 
-// TestGeneratedEventsAreValid round-trips generated events through the real
-// validator and enricher, and checks the traffic mix covers every channel
-// and device class.
 func TestGeneratedEventsAreValid(t *testing.T) {
 	t.Parallel()
 	gen := NewGenerator(1, "shop.example.com", 500)
@@ -107,9 +104,6 @@ func TestRun(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Requests in flight when the run ends reach the server but are
-			// canceled client-side, so the server may see up to one extra
-			// request per worker.
 			if seen := hits.Load(); rep.Requests == 0 || seen < rep.Requests || seen > rep.Requests+4 {
 				t.Fatalf("requests = %d, server saw %d", rep.Requests, seen)
 			}

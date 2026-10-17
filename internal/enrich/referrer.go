@@ -8,9 +8,7 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/event"
 )
 
-// Domain lists used for referrer classification. An entry ending in "." is a
-// brand pattern that matches any TLD (google. matches google.com and
-// google.co.uk); other entries match the domain itself and its subdomains.
+// a trailing "." matches any TLD (google. matches google.co.uk).
 var (
 	emailDomains = [...]string{
 		"mail.google.com", "outlook.live.com", "outlook.office.com", "outlook.office365.com",
@@ -37,25 +35,15 @@ var (
 	searchMediums = [...]string{"organic", "search"}
 )
 
-// ChannelInput carries what ClassifyChannel needs to attribute an event.
+// ChannelInput is the input to ClassifyChannel. Hosts are lower-cased.
 type ChannelInput struct {
-	// ReferrerHost is the lower-cased host of the referrer, or the package
-	// name for android-app:// referrers. Empty means no referrer.
-	ReferrerHost string
-	// PageHost is the lower-cased host of the page the event happened on.
-	PageHost string
-	// UTM holds the normalized campaign parameters.
-	UTM event.UTM
-	// PaidClick reports whether the page URL carries an ad-platform click ID.
-	PaidClick bool
+	ReferrerHost string // empty means no referrer
+	PageHost     string
+	UTM          event.UTM
+	PaidClick    bool
 }
 
-// ClassifyChannel attributes an event to a marketing channel.
-//
-// Precedence follows what marketers expect from tools such as GA4: explicit
-// campaign tagging (utm_medium) wins, then ad click IDs, then the referrer.
-// Self-referrals (internal navigation) count as direct so that moving between
-// pages does not overwrite the original source.
+// ClassifyChannel picks a channel: utm_medium, then click IDs, then referrer.
 func ClassifyChannel(in ChannelInput) event.Channel {
 	if ch, ok := channelFromMedium(in.UTM.Medium); ok {
 		return ch
@@ -99,9 +87,7 @@ func channelFromMedium(medium string) (event.Channel, bool) {
 	}
 }
 
-// ReferrerHost extracts the lower-cased host from a referrer URL. For
-// android-app:// referrers it returns the app package name, which is how
-// Android reports referrals from native apps such as Gmail.
+// ReferrerHost returns the lower-cased referrer host or android-app package.
 func ReferrerHost(rawRef string) string {
 	if rawRef == "" {
 		return ""
@@ -124,8 +110,7 @@ func matchAny(host string, patterns []string) bool {
 
 func matchDomain(host, pattern string) bool {
 	if brand, ok := strings.CutSuffix(pattern, "."); ok {
-		// A brand label must be followed by at least one more label (the
-		// TLD) and be either the first label or preceded by a dot.
+		// brand must start a label and be followed by a TLD
 		for i := 0; ; {
 			j := strings.Index(host[i:], brand+".")
 			if j < 0 {

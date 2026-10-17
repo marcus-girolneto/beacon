@@ -11,10 +11,10 @@ import (
 	"unicode/utf8"
 )
 
-// ErrInvalid is matched by every validation error returned from Validate.
+// ErrInvalid matches every validation error.
 var ErrInvalid = errors.New("invalid event")
 
-// Field length limits enforced by the Validator.
+// Field length limits.
 const (
 	MaxIDLength       = 128
 	MaxNameLength     = 128
@@ -26,18 +26,18 @@ const (
 	maxMessageIDBytes = 64
 )
 
-// FieldError describes why a single field is invalid.
+// FieldError is one invalid field.
 type FieldError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
 }
 
-// ValidationError lists every invalid field of an event.
+// ValidationError lists the invalid fields of an event.
 type ValidationError struct {
 	Fields []FieldError
 }
 
-// Error implements the error interface.
+// Error implements error.
 func (e *ValidationError) Error() string {
 	parts := make([]string, len(e.Fields))
 	for i, f := range e.Fields {
@@ -46,23 +46,17 @@ func (e *ValidationError) Error() string {
 	return "invalid event: " + strings.Join(parts, "; ")
 }
 
-// Is makes errors.Is(err, ErrInvalid) true for validation errors.
+// Is matches ErrInvalid.
 func (e *ValidationError) Is(target error) bool {
 	return target == ErrInvalid
 }
 
-// Validator checks events against size, format and freshness rules.
-// The zero value is not usable; construct it with NewValidator.
+// Validator checks events. Use NewValidator, the zero value is not usable.
 type Validator struct {
-	// MaxPropertiesBytes bounds the serialized size of Event.Properties.
 	MaxPropertiesBytes int
-	// MaxAge rejects events whose timestamp is older than now minus MaxAge.
-	MaxAge time.Duration
-	// MaxClockSkew rejects events whose timestamp is more than MaxClockSkew
-	// in the future, which almost always means a broken client clock.
-	MaxClockSkew time.Duration
-	// Now returns the current time.
-	Now func() time.Time
+	MaxAge             time.Duration
+	MaxClockSkew       time.Duration // how far in the future a timestamp may be
+	Now                func() time.Time
 }
 
 // NewValidator returns a Validator with default limits.
@@ -78,8 +72,7 @@ func NewValidator(now func() time.Time) Validator {
 	}
 }
 
-// Validate reports every rule e violates as a *ValidationError, or nil if e
-// is acceptable.
+// Validate returns a *ValidationError listing every problem, or nil.
 func (v Validator) Validate(e *Event) error {
 	var errs []FieldError
 	add := func(field, format string, args ...any) {
@@ -194,9 +187,6 @@ func checkURL(raw string, requireHTTP bool) string {
 	return ""
 }
 
-// isJSONObject reports whether raw looks like a JSON object. The decoder has
-// already guaranteed raw is well-formed JSON, so checking the delimiter is
-// sufficient.
 func isJSONObject(raw []byte) bool {
 	trimmed := bytes.TrimSpace(raw)
 	return len(trimmed) >= 2 && trimmed[0] == '{' && trimmed[len(trimmed)-1] == '}'

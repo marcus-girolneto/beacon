@@ -16,36 +16,27 @@ import (
 
 // Config controls a load test run.
 type Config struct {
-	// Target is the base URL of the beacon instance.
-	Target string
-	// Duration is how long to generate traffic.
-	Duration time.Duration
-	// Concurrency is the number of parallel clients.
+	Target      string
+	Duration    time.Duration
 	Concurrency int
-	// BatchSize is the number of events per request. 1 uses /v1/track;
-	// larger values use /v1/batch.
-	BatchSize int
-	// Rate caps the total request rate per second. Zero means unlimited.
-	Rate float64
-	// Seed makes the traffic mix reproducible.
-	Seed uint64
-	// Host is the simulated website.
-	Host string
-	// Visitors is the size of the simulated visitor pool.
-	Visitors int
+	BatchSize   int     // 1 uses /v1/track, more uses /v1/batch
+	Rate        float64 // requests/s, zero means unlimited
+	Seed        uint64
+	Host        string
+	Visitors    int
 }
 
 // Report summarizes a run.
 type Report struct {
 	Elapsed   time.Duration
 	Requests  int64
-	Events    int64 // events in requests answered 202
-	Errors    int64 // transport errors
+	Events    int64 // accepted (202) only
+	Errors    int64
 	Status    map[int]int64
 	latencies []time.Duration
 }
 
-// EventsPerSecond is the accepted event throughput.
+// EventsPerSecond returns accepted events per second.
 func (r Report) EventsPerSecond() float64 {
 	if r.Elapsed <= 0 {
 		return 0
@@ -53,7 +44,7 @@ func (r Report) EventsPerSecond() float64 {
 	return float64(r.Events) / r.Elapsed.Seconds()
 }
 
-// RequestsPerSecond is the completed request throughput.
+// RequestsPerSecond returns completed requests per second.
 func (r Report) RequestsPerSecond() float64 {
 	if r.Elapsed <= 0 {
 		return 0
@@ -71,7 +62,7 @@ func (r Report) Percentile(q float64) time.Duration {
 	return r.latencies[idx]
 }
 
-// WriteTo prints a human-readable summary.
+// WriteTo writes a summary.
 func (r Report) WriteTo(w io.Writer) (int64, error) {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "duration:     %s\n", r.Elapsed.Round(time.Millisecond))

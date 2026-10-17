@@ -1,4 +1,4 @@
-// Package stats defines the aggregate query model served by the stats API.
+// Package stats defines the stats query model.
 package stats
 
 import (
@@ -7,13 +7,13 @@ import (
 	"time"
 )
 
-// ErrInvalidQuery is matched by every error returned from Query.Validate.
+// ErrInvalidQuery matches every Query.Validate error.
 var ErrInvalidQuery = errors.New("invalid stats query")
 
-// Dimension is an attribute events can be grouped by.
+// Dimension is a group-by attribute.
 type Dimension string
 
-// Supported dimensions.
+// Dimensions.
 const (
 	ByCampaign Dimension = "utm_campaign"
 	BySource   Dimension = "utm_source"
@@ -23,12 +23,12 @@ const (
 	ByDay      Dimension = "day"
 )
 
-// Dimensions returns every supported dimension.
+// Dimensions returns all dimensions.
 func Dimensions() []Dimension {
 	return []Dimension{ByCampaign, BySource, ByChannel, ByPath, ByDevice, ByDay}
 }
 
-// ParseDimension converts s into a Dimension.
+// ParseDimension parses s.
 func ParseDimension(s string) (Dimension, error) {
 	for _, d := range Dimensions() {
 		if string(d) == s {
@@ -38,27 +38,23 @@ func ParseDimension(s string) (Dimension, error) {
 	return "", fmt.Errorf("%w: unknown group_by %q", ErrInvalidQuery, s)
 }
 
-// Limits applied to queries.
+// Query limits.
 const (
 	DefaultLimit = 100
 	MaxLimit     = 1000
 	MaxRange     = 366 * 24 * time.Hour
 )
 
-// Query selects events in the half-open interval [From, To) and groups them
-// by GroupBy.
+// Query selects events in [From, To) grouped by GroupBy.
 type Query struct {
 	From    time.Time
 	To      time.Time
 	GroupBy Dimension
-	// Host optionally restricts results to one site.
-	Host string
-	// Limit caps the number of groups returned.
-	Limit int
+	Host    string // optional
+	Limit   int
 }
 
-// Validate checks q and returns an error wrapping ErrInvalidQuery if it is
-// unusable.
+// Validate returns an error wrapping ErrInvalidQuery if q is unusable.
 func (q Query) Validate() error {
 	switch {
 	case q.From.IsZero() || q.To.IsZero():
@@ -81,9 +77,7 @@ type Row struct {
 	Key       string `json:"key,omitempty"`
 	Events    int64  `json:"events"`
 	Pageviews int64  `json:"pageviews"`
-	// Visitors counts distinct daily visitor hashes. Because hashes rotate
-	// every UTC day, a person active on three days counts three times in a
-	// multi-day range; this is the price of not keeping linkable identifiers.
+	// daily unique, a visitor active on 3 days counts 3 times
 	Visitors int64 `json:"visitors"`
 }
 

@@ -1,5 +1,4 @@
-// Package api implements beacon's HTTP interface: event ingestion, the
-// tracking pixel, the stats query endpoint and health probes.
+// Package api implements beacon's HTTP handlers.
 package api
 
 import (
@@ -18,7 +17,7 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/stats"
 )
 
-// Enqueuer admits enriched records into the ingestion pipeline.
+// Enqueuer admits records into the pipeline.
 type Enqueuer interface {
 	Enqueue(ctx context.Context, recs ...event.Record) error
 }
@@ -36,27 +35,16 @@ type Recorder interface {
 	ObserveRequest(route string, code int, elapsed time.Duration)
 }
 
-// Config tunes request handling. Zero fields take the defaults listed below.
+// Config tunes request handling. Zero fields get defaults.
 type Config struct {
-	// MaxEventBytes caps the body of /v1/track. Default 64 KiB.
-	MaxEventBytes int64
-	// MaxBatchBytes caps the body of /v1/batch. Default 1 MiB.
-	MaxBatchBytes int64
-	// MaxBatchEvents caps the number of events in one /v1/batch request.
-	// Default 500.
+	MaxEventBytes  int64
+	MaxBatchBytes  int64
 	MaxBatchEvents int
-	// RetryAfter is advertised to clients when the buffer is full.
-	// Default 1s.
-	RetryAfter time.Duration
-	// ProxyHops is the number of trusted reverse proxies in front of the
-	// server. When positive, the client IP is taken from X-Forwarded-For,
-	// counting ProxyHops entries from the right; entries further left are
-	// client-controlled and ignored. Zero uses the TCP peer address.
-	ProxyHops int
-	// StatsTimeout bounds each stats query. Default 10s.
+	RetryAfter     time.Duration
+	// trusted proxies in front. zero ignores X-Forwarded-For
+	ProxyHops    int
 	StatsTimeout time.Duration
-	// Now returns the current time. Default time.Now.
-	Now func() time.Time
+	Now          func() time.Time
 }
 
 func (c Config) withDefaults() Config {
@@ -81,7 +69,7 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
-// Server holds the dependencies of the HTTP handlers.
+// Server serves the HTTP API.
 type Server struct {
 	cfg       Config
 	queue     Enqueuer
@@ -93,8 +81,7 @@ type Server struct {
 	draining  atomic.Bool
 }
 
-// Deps groups the collaborators a Server needs. Stats may be nil, in which
-// case the stats endpoint responds 501.
+// Deps are the Server's dependencies. Stats may be nil (stats returns 501).
 type Deps struct {
 	Queue    Enqueuer
 	Enricher *enrich.Enricher
@@ -123,8 +110,7 @@ func New(cfg Config, deps Deps) *Server {
 	}
 }
 
-// SetDraining marks the server as shutting down so readiness probes fail
-// and load balancers stop routing new traffic to it.
+// SetDraining makes readiness probes fail.
 func (s *Server) SetDraining() { s.draining.Store(true) }
 
 // Handler returns the HTTP routes.
@@ -144,9 +130,7 @@ func (s *Server) route(mux *http.ServeMux, pattern string, h http.HandlerFunc) {
 	mux.Handle(pattern, s.instrument(pattern, h))
 }
 
-// instrument records request latency and sets the CORS header. Ingestion
-// endpoints are called from arbitrary origins by design and never use
-// credentials, so a wildcard origin is safe.
+// wildcard CORS is fine, no endpoint uses credentials.
 func (s *Server) instrument(route string, next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := s.cfg.Now()
@@ -242,7 +226,6 @@ func parseStatsQuery(r *http.Request) (stats.Query, error) {
 	return q, q.Validate()
 }
 
-// parseTime accepts RFC 3339 timestamps and plain dates (midnight UTC).
 func parseTime(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, errors.New("is required")
@@ -257,8 +240,6 @@ func parseTime(s string) (time.Time, error) {
 	return t, nil
 }
 
-// clientIP returns the address used for visitor hashing. See
-// Config.ProxyHops for how X-Forwarded-For is trusted.
 func (s *Server) clientIP(r *http.Request) string {
 	if s.cfg.ProxyHops > 0 {
 		if xff := r.Header.Values("X-Forwarded-For"); len(xff) > 0 {

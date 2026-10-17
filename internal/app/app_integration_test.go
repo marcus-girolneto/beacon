@@ -16,8 +16,6 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/stats"
 )
 
-// TestEndToEndPostgres runs the full binary wiring against a real Postgres:
-// events go in over HTTP and come back out of the stats endpoint.
 func TestEndToEndPostgres(t *testing.T) {
 	ctx := t.Context()
 	ctr, err := tcpostgres.Run(ctx, "postgres:17-alpine",

@@ -14,8 +14,6 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/event"
 )
 
-// counterReader yields a distinct, deterministic salt on every read so tests
-// can observe rotation.
 type counterReader struct{ n byte }
 
 func (r *counterReader) Read(p []byte) (int, error) {

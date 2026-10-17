@@ -1,6 +1,4 @@
-// Package sink provides pipeline sinks that serialize records as
-// newline-delimited JSON, either to an arbitrary writer such as stdout or to
-// an append-only file.
+// Package sink provides NDJSON pipeline sinks.
 package sink
 
 import (
@@ -16,9 +14,7 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/event"
 )
 
-// NDJSON writes each record as one JSON line. Writes are serialized, so a
-// single NDJSON can be shared by several batchers without lines from
-// concurrent batches interleaving.
+// NDJSON writes one JSON line per record. It is safe for concurrent use.
 type NDJSON struct {
 	mu  sync.Mutex
 	out io.Writer
@@ -32,7 +28,7 @@ func NewNDJSON(w io.Writer) *NDJSON {
 	return &NDJSON{out: w, w: bw, enc: json.NewEncoder(bw)}
 }
 
-// Write encodes recs and flushes them to the underlying writer.
+// Write encodes and flushes recs.
 func (s *NDJSON) Write(ctx context.Context, recs []event.Record) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -46,22 +42,20 @@ func (s *NDJSON) Write(ctx context.Context, recs []event.Record) error {
 		}
 	}
 	if err := s.w.Flush(); err != nil {
-		// bufio.Writer errors are sticky; reset so a transient failure does
-		// not poison every later batch. The retry rewrites the whole batch.
+		// bufio errors are sticky, reset so later batches can succeed
 		s.w.Reset(s.out)
 		return fmt.Errorf("flush ndjson: %w", err)
 	}
 	return nil
 }
 
-// File is an NDJSON sink backed by an append-only file. Each successful
-// Write is fsynced, so acknowledged batches survive a crash of the host.
+// File is an NDJSON sink on an append-only file. Every Write is fsynced.
 type File struct {
 	*NDJSON
 	f *os.File
 }
 
-// OpenFile opens (creating if needed) path for appending.
+// OpenFile opens path for appending, creating it if needed.
 func OpenFile(path string) (*File, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // path is operator configuration
 	if err != nil {
@@ -70,7 +64,7 @@ func OpenFile(path string) (*File, error) {
 	return &File{NDJSON: NewNDJSON(f), f: f}, nil
 }
 
-// Write appends recs to the file and syncs it to stable storage.
+// Write appends recs and syncs the file.
 func (s *File) Write(ctx context.Context, recs []event.Record) error {
 	if err := s.NDJSON.Write(ctx, recs); err != nil {
 		return err
@@ -81,7 +75,7 @@ func (s *File) Write(ctx context.Context, recs []event.Record) error {
 	return nil
 }
 
-// Close flushes buffered data and closes the file.
+// Close flushes and closes the file.
 func (s *File) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

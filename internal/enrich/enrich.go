@@ -10,8 +10,7 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/event"
 )
 
-// RequestMeta carries the transport-level attributes of the request that
-// delivered an event. They are used for enrichment and then discarded.
+// RequestMeta holds request attributes used for enrichment, never stored.
 type RequestMeta struct {
 	IP         string
 	UserAgent  string
@@ -23,12 +22,12 @@ type Enricher struct {
 	hasher *VisitorHasher
 }
 
-// New returns an Enricher that derives visitor hashes with hasher.
+// New returns an Enricher.
 func New(hasher *VisitorHasher) *Enricher {
 	return &Enricher{hasher: hasher}
 }
 
-// Enrich builds a Record from e, which must already have passed validation.
+// Enrich builds a Record from an already validated e.
 func (en *Enricher) Enrich(e *event.Event, meta RequestMeta) (event.Record, error) {
 	page, err := url.Parse(e.URL)
 	if err != nil {
@@ -63,9 +62,7 @@ func (en *Enricher) Enrich(e *event.Event, meta RequestMeta) (event.Record, erro
 		Name:        e.Name,
 		AnonymousID: e.AnonymousID,
 		VisitorHash: visitor,
-		// The query string is dropped from the stored URL: it routinely
-		// carries emails, tokens and other personal data, and the useful
-		// parts (UTM tags, click IDs) have already been extracted.
+		// drop the query, it often carries PII
 		URL:          page.Scheme + "://" + page.Host + path,
 		Host:         host,
 		Path:         path,

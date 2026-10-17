@@ -1,5 +1,4 @@
-// Package app wires beacon's components together and runs the server until
-// its context is canceled, then shuts down in dependency order.
+// Package app wires beacon's components together and runs the server.
 package app
 
 import (
@@ -21,10 +20,7 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/sink"
 )
 
-// Run serves on ln until ctx is canceled, then drains: it marks the server
-// not ready, stops accepting requests and waits for in-flight ones, flushes
-// every buffered event to the sink and finally closes the sink. stdout is
-// where the stdout sink writes.
+// Run serves on ln until ctx is canceled, then drains the pipeline and closes the sink.
 func Run(ctx context.Context, cfg config.Config, ln net.Listener, stdout io.Writer, log *slog.Logger) error {
 	out, err := openSink(ctx, cfg, stdout)
 	if err != nil {
@@ -66,8 +62,7 @@ func Run(ctx context.Context, cfg config.Config, ln net.Listener, stdout io.Writ
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
-		// Stats queries are the slowest handlers; leave them room to
-		// answer 504 themselves before the connection is cut.
+		// leave stats room to answer 504 itself
 		WriteTimeout:   max(15*time.Second, cfg.StatsTimeout+5*time.Second),
 		IdleTimeout:    90 * time.Second,
 		MaxHeaderBytes: 16 << 10,
@@ -92,7 +87,7 @@ func Run(ctx context.Context, cfg config.Config, ln net.Listener, stdout io.Writ
 		runErr = fmt.Errorf("http server: %w", err)
 	}
 
-	// The drain deadline is detached from ctx, which is already canceled.
+	// ctx is already canceled here
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cfg.ShutdownTimeout)
 	defer cancel()
 

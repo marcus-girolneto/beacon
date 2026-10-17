@@ -1,5 +1,4 @@
-// Command loadgen fires realistic synthetic analytics traffic at a beacon
-// instance and reports throughput and latency percentiles.
+// Command loadgen sends synthetic traffic to beacon and reports throughput and latency.
 package main
 
 import (
@@ -17,7 +16,7 @@ import (
 	"github.com/marcus-girolneto/beacon/internal/loadgen"
 )
 
-// version is set at build time with -ldflags "-X main.version=...".
+// set via -ldflags "-X main.version=..."
 var version = "dev"
 
 func main() {
