@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: beacon
+      POSTGRES_PASSWORD: beacon
+      POSTGRES_DB: beacon
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beacon -d beacon"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  beacon:
+    build:
+      context: .
+      args:
+        VERSION: compose
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BEACON_SINK: postgres
+      BEACON_POSTGRES_DSN: "postgres://beacon:beacon@postgres:5432/beacon?sslmode=disable"
+      BEACON_LOG_FORMAT: text
+      # The load generator sends synthetic client IPs in X-Forwarded-For, as a
+      # load balancer would. Set this to 0 when beacon is exposed directly.
+      BEACON_PROXY_HOPS: "1"
+    ports:
+      - "${BEACON_PORT:-8080}:8080"
+    restart: unless-stopped
+    stop_grace_period: 35s
+
+volumes:
+  pgdata:
