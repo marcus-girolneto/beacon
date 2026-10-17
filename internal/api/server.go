@@ -53,6 +53,8 @@ type Config struct {
 	// counting ProxyHops entries from the right; entries further left are
 	// client-controlled and ignored. Zero uses the TCP peer address.
 	ProxyHops int
+	// StatsTimeout bounds each stats query. Default 10s.
+	StatsTimeout time.Duration
 	// Now returns the current time. Default time.Now.
 	Now func() time.Time
 }
@@ -69,6 +71,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.RetryAfter <= 0 {
 		c.RetryAfter = time.Second
+	}
+	if c.StatsTimeout <= 0 {
+		c.StatsTimeout = 10 * time.Second
 	}
 	if c.Now == nil {
 		c.Now = time.Now
@@ -197,10 +202,14 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	res, err := s.stats.Stats(r.Context(), q)
+	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.StatsTimeout)
+	defer cancel()
+	res, err := s.stats.Stats(ctx, q)
 	switch {
 	case errors.Is(err, stats.ErrInvalidQuery):
 		writeError(w, http.StatusBadRequest, err.Error())
+	case err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
+		writeError(w, http.StatusGatewayTimeout, "stats query timed out; narrow the time range")
 	case err != nil:
 		s.log.ErrorContext(r.Context(), "stats query failed", "err", err)
 		writeError(w, http.StatusInternalServerError, "stats query failed")

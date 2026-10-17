@@ -80,13 +80,18 @@ func (f *fakeRecorder) get(m map[string]int, k string) int {
 }
 
 type fakeStats struct {
-	got stats.Query
-	res stats.Result
-	err error
+	got   stats.Query
+	res   stats.Result
+	err   error
+	block bool // wait for the context to end, like a slow query
 }
 
-func (f *fakeStats) Stats(_ context.Context, q stats.Query) (stats.Result, error) {
+func (f *fakeStats) Stats(ctx context.Context, q stats.Query) (stats.Result, error) {
 	f.got = q
+	if f.block {
+		<-ctx.Done()
+		return stats.Result{}, fmt.Errorf("query stats: %w", ctx.Err())
+	}
 	return f.res, f.err
 }
 
@@ -475,6 +480,15 @@ func TestStatsEndpoint(t *testing.T) {
 		env.stats.err = fmt.Errorf("%w: nope", stats.ErrInvalidQuery)
 		if res := env.do(t, http.MethodGet, "/v1/stats?from=2026-09-01&to=2026-10-01", "", ""); res.Code != http.StatusBadRequest {
 			t.Errorf("status = %d, want 400", res.Code)
+		}
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		t.Parallel()
+		env := newEnv(t, Config{StatsTimeout: time.Millisecond})
+		env.stats.block = true
+		if res := env.do(t, http.MethodGet, "/v1/stats?from=2026-09-01&to=2026-10-01", "", ""); res.Code != http.StatusGatewayTimeout {
+			t.Errorf("status = %d, want 504", res.Code)
 		}
 	})
 

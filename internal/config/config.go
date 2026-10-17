@@ -32,6 +32,7 @@ type Config struct {
 	MaxEventBytes   int64
 	MaxBatchBytes   int64
 	RetryAfter      time.Duration
+	StatsTimeout    time.Duration
 	ProxyHops       int
 	ShutdownTimeout time.Duration
 	LogLevel        slog.Level
@@ -71,6 +72,7 @@ func Parse(args []string, getenv func(string) string, output io.Writer) (Config,
 	fs.Int64Var(&c.MaxEventBytes, "max-event-bytes", 64<<10, "maximum body size of /v1/track")
 	fs.Int64Var(&c.MaxBatchBytes, "max-batch-bytes", 1<<20, "maximum body size of /v1/batch")
 	fs.DurationVar(&c.RetryAfter, "retry-after", time.Second, "Retry-After advertised on 503 responses")
+	fs.DurationVar(&c.StatsTimeout, "stats-timeout", 10*time.Second, "maximum duration of a stats query")
 	fs.IntVar(&c.ProxyHops, "proxy-hops", 0, "trusted reverse proxies in front of beacon (0 ignores X-Forwarded-For)")
 	fs.DurationVar(&c.ShutdownTimeout, "shutdown-timeout", 30*time.Second, "maximum time to drain on shutdown")
 	fs.StringVar(&logLevel, "log-level", "info", "log level: debug, info, warn or error")
@@ -137,6 +139,7 @@ func (c Config) validate() error {
 		{"block-timeout", int64(c.Pipeline.BlockTimeout)},
 		{"write-timeout", int64(c.Pipeline.WriteTimeout)},
 		{"retry-after", int64(c.RetryAfter)},
+		{"stats-timeout", int64(c.StatsTimeout)},
 		{"shutdown-timeout", int64(c.ShutdownTimeout)},
 	} {
 		if p.val <= 0 {

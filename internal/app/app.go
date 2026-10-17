@@ -48,6 +48,7 @@ func Run(ctx context.Context, cfg config.Config, ln net.Listener, stdout io.Writ
 		MaxBatchBytes:  cfg.MaxBatchBytes,
 		MaxBatchEvents: cfg.MaxBatchEvents,
 		RetryAfter:     cfg.RetryAfter,
+		StatsTimeout:   cfg.StatsTimeout,
 		ProxyHops:      cfg.ProxyHops,
 	}, api.Deps{
 		Queue:    p,
@@ -65,10 +66,12 @@ func Run(ctx context.Context, cfg config.Config, ln net.Listener, stdout io.Writ
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       90 * time.Second,
-		MaxHeaderBytes:    16 << 10,
-		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
+		// Stats queries are the slowest handlers; leave them room to
+		// answer 504 themselves before the connection is cut.
+		WriteTimeout:   max(15*time.Second, cfg.StatsTimeout+5*time.Second),
+		IdleTimeout:    90 * time.Second,
+		MaxHeaderBytes: 16 << 10,
+		ErrorLog:       slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 
 	p.Start()

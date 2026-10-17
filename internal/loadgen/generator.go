@@ -32,7 +32,12 @@ func newWeighted[T any](pairs ...struct {
 }
 
 func (w weighted[T]) pick(r *rand.Rand) T {
-	n := r.IntN(w.totalWt)
+	return w.at(r.IntN(w.totalWt))
+}
+
+// at returns the item whose cumulative weight range contains n mod total.
+func (w weighted[T]) at(n int) T {
+	n %= w.totalWt
 	for i, c := range w.cumul {
 		if n < c {
 			return w.items[i]
@@ -154,8 +159,10 @@ func (g *Generator) Next(now time.Time) Visit {
 	}
 
 	return Visit{
-		Event:     e,
-		UserAgent: g.agents.pick(g.rng),
+		Event: e,
+		// Each visitor keeps one device, as real visitors mostly do, so
+		// visitor hashes (IP + User-Agent) stay stable across events.
+		UserAgent: g.agents.at(visitor * 2654435761),
 		// Addresses from 198.18.0.0/15, reserved for benchmarking (RFC 2544).
 		IP: fmt.Sprintf("198.%d.%d.%d", 18+visitor>>16&1, visitor>>8&0xff, visitor&0xff),
 	}

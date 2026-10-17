@@ -78,7 +78,7 @@ func (q Query) Validate() error {
 
 // Row is the aggregate for one group.
 type Row struct {
-	Key       string `json:"key"`
+	Key       string `json:"key,omitempty"`
 	Events    int64  `json:"events"`
 	Pageviews int64  `json:"pageviews"`
 	// Visitors counts distinct daily visitor hashes. Because hashes rotate
